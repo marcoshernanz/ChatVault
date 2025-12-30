@@ -1,6 +1,7 @@
 use candle_core::{DType, Device, Tensor};
 use candle_nn::VarBuilder;
 use candle_transformers::models::bert::{BertModel, Config};
+use js_sys::Function;
 use serde::{Deserialize, Serialize};
 use text_splitter::{ChunkConfig, ChunkSizer, MarkdownSplitter, TextSplitter};
 use tokenizers::Tokenizer;
@@ -72,7 +73,12 @@ impl VectorDatabase {
         Ok(())
     }
 
-    pub fn add_document(&mut self, id: String, content: String) -> Result<(), JsError> {
+    pub fn add_document(
+        &mut self,
+        id: String,
+        content: String,
+        on_progress: Option<Function>,
+    ) -> Result<(), JsError> {
         if self.model.is_none() {
             return Err(JsError::new("Model not loaded"));
         }
@@ -93,7 +99,18 @@ impl VectorDatabase {
             splitter.chunks(&content).map(|s| s.to_string()).collect()
         };
 
-        for chunk_text in chunks {
+        let total_chunks = chunks.len();
+
+        for (i, chunk_text) in chunks.into_iter().enumerate() {
+            // Report progress back to JS
+            if let Some(callback) = &on_progress {
+                let _ = callback.call2(
+                    &JsValue::NULL,
+                    &JsValue::from(i as u32),
+                    &JsValue::from(total_chunks as u32),
+                );
+            }
+
             // Log progress
             let preview = if chunk_text.len() > 50 {
                 &chunk_text[..50]

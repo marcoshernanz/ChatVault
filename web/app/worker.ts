@@ -11,50 +11,60 @@ type WorkerMessage =
 let db: VectorDatabase | null = null;
 
 /**
- * Fetches a file from the network, but checks the IndexedDB cache first.
- * This significantly speeds up subsequent loads by avoiding re-downloading large model files.
- *
- * @param url - The URL of the file to fetch.
- * @returns A Promise that resolves to the file content as an ArrayBuffer.
+ * Fetches a file with progress reporting.
+ * Checks IndexedDB cache first.
  */
-async function fetchWithCache(url: string): Promise<ArrayBuffer> {
-  // Extract the filename from the URL to use as the cache key.
-  // e.g., "https://.../model.safetensors" -> "model.safetensors"
+async function fetchWithProgress(
+  url: string,
+  onProgress: (loaded: number, total: number) => void
+): Promise<ArrayBuffer> {
   const filename = url.split("/").pop() || "unknown";
 
   try {
-    // 1. Try to get the file from IndexedDB
-    // 'get' is a helper from idb-keyval that retrieves a value by key.
     const cachedFile = await get(filename);
-
     if (cachedFile) {
-      console.log(`Worker: Loaded ${filename} from cache (IndexedDB).`);
-      // If found, return it immediately.
+      console.log(`Worker: Loaded ${filename} from cache.`);
+      // Report 100% progress immediately
+      onProgress(cachedFile.byteLength, cachedFile.byteLength);
       return cachedFile;
     }
   } catch (err) {
-    // If IndexedDB fails (e.g., storage quota exceeded or privacy settings),
-    // we just log a warning and proceed to fetch from the network.
-    console.warn(`Worker: Failed to read from cache for ${filename}`, err);
+    console.warn(`Worker: Cache lookup failed for ${filename}`, err);
   }
 
-  // 2. If not in cache, fetch from the network
   console.log(`Worker: Fetching ${filename} from network...`);
   const response = await fetch(url);
+  if (!response.ok) throw new Error(`Failed to fetch ${url}`);
 
-  if (!response.ok) {
-    throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
+  const total = Number(response.headers.get("content-length")) || 0;
+  const reader = response.body!.getReader();
+  let received = 0;
+  const chunks: Uint8Array[] = [];
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    if (value) {
+      chunks.push(value);
+      received += value.length;
+      onProgress(received, total);
+    }
   }
 
-  // Get the file content as an ArrayBuffer (raw binary data)
-  const buffer = await response.arrayBuffer();
+  // Reassemble chunks
+  const chunksAll = new Uint8Array(received);
+  let position = 0;
+  for (const chunk of chunks) {
+    chunksAll.set(chunk, position);
+    position += chunk.length;
+  }
+  const buffer = chunksAll.buffer;
 
-  // 3. Save the fetched file to IndexedDB for next time
-  // We don't await this because we don't want to block the application start
-  // just to save to cache. It happens in the background.
-  set(filename, buffer)
-    .then(() => console.log(`Worker: Cached ${filename} to IndexedDB.`))
-    .catch((err) => console.error(`Worker: Failed to cache ${filename}`, err));
+  // Save to cache
+  set(filename, buffer).catch((err) =>
+    console.error(`Worker: Failed to cache ${filename}`, err)
+  );
 
   return buffer;
 }
@@ -62,31 +72,55 @@ async function fetchWithCache(url: string): Promise<ArrayBuffer> {
 // Initialize the WASM module and the Vector Database
 async function initialize() {
   try {
-    // Initialize the WASM module
-    // We use the default export from the pkg which is the init function
     await init();
-
-    // Create the database instance
     db = new VectorDatabase();
-
     console.log("Worker: WASM initialized, loading model...");
 
-    // Fetch model files using our new caching strategy
-    // We load all three required files in parallel using Promise.all
+    // Track progress for multiple files
+    const progressMap: Record<string, { loaded: number; total: number }> = {};
+
+    const reportTotalProgress = () => {
+      let totalLoaded = 0;
+      let totalSize = 0;
+
+      Object.values(progressMap).forEach((p) => {
+        totalLoaded += p.loaded;
+        totalSize += p.total || 0; // Handle 0 total if unknown
+      });
+
+      // Avoid division by zero
+      const percent = totalSize > 0 ? (totalLoaded / totalSize) * 100 : 0;
+
+      self.postMessage({
+        type: "INIT_PROGRESS",
+        payload: { percent, status: "Downloading model..." },
+      });
+    };
+
+    const loadFile = (url: string) => {
+      return fetchWithProgress(url, (loaded, total) => {
+        progressMap[url] = { loaded, total };
+        reportTotalProgress();
+      });
+    };
+
     const [weights, tokenizer, config] = await Promise.all([
-      fetchWithCache(
+      loadFile(
         "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/model.safetensors"
       ),
-      fetchWithCache(
+      loadFile(
         "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/tokenizer.json"
       ),
-      fetchWithCache(
+      loadFile(
         "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/config.json"
       ),
     ]);
 
-    // Load the model into the database
-    // We pass the binary data (Uint8Array) to the Rust WASM module
+    self.postMessage({
+      type: "INIT_PROGRESS",
+      payload: { percent: 100, status: "Compiling model..." },
+    });
+
     db.load_model(
       new Uint8Array(weights),
       new Uint8Array(tokenizer),
@@ -94,8 +128,6 @@ async function initialize() {
     );
 
     console.log("Worker: Model loaded!");
-
-    // Notify the main thread that we are ready
     self.postMessage({ type: "READY" });
   } catch (e) {
     console.error("Worker: Failed to initialize", e);
@@ -117,7 +149,23 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
       const { id, content } = msg.payload;
       try {
         console.log(`Worker: Adding document ${id}...`);
-        db.add_document(id, content);
+
+        // Pass a callback to Rust for progress updates
+        // The callback receives (current_chunk_index, total_chunks)
+        const onProgress = (current: number, total: number) => {
+          self.postMessage({
+            type: "INDEX_PROGRESS",
+            payload: {
+              filename: id,
+              current,
+              total,
+              percent: (current / total) * 100,
+            },
+          });
+        };
+
+        db.add_document(id, content, onProgress);
+
         const count = db.get_count();
         self.postMessage({ type: "DOCUMENT_ADDED", payload: count });
       } catch (err) {

@@ -20,6 +20,16 @@ export default function Home() {
   const [searching, setSearching] = useState(false);
   const [docCount, setDocCount] = useState(0);
 
+  // Progress states
+  const [initProgress, setInitProgress] = useState<{
+    percent: number;
+    status: string;
+  } | null>(null);
+  const [indexProgress, setIndexProgress] = useState<{
+    filename: string;
+    percent: number;
+  } | null>(null);
+
   useEffect(() => {
     // Initialize the Web Worker
     // Web Workers allow us to run scripts in background threads.
@@ -29,11 +39,18 @@ export default function Home() {
     // Set up the message handler to receive messages from the worker
     workerRef.current.onmessage = (e) => {
       const { type, payload } = e.data;
-      console.log("Main: Received message", type);
+      // console.log("Main: Received message", type);
 
       switch (type) {
+        case "INIT_PROGRESS":
+          setInitProgress(payload);
+          break;
         case "READY":
           setReady(true);
+          setInitProgress(null);
+          break;
+        case "INDEX_PROGRESS":
+          setIndexProgress(payload);
           break;
         case "SEARCH_RESULTS":
           setResults(payload);
@@ -41,11 +58,13 @@ export default function Home() {
           break;
         case "DOCUMENT_ADDED":
           setDocCount(payload);
-          alert(`Saved! Total chunks: ${payload}`);
+          setIndexProgress(null);
+          // alert(`Saved! Total chunks: ${payload}`); // Removed alert for smoother UX
           break;
         case "ERROR":
           console.error("Worker error:", payload);
           setSearching(false);
+          setIndexProgress(null);
           alert("An error occurred in the worker. Check console.");
           break;
       }
@@ -85,13 +104,48 @@ export default function Home() {
         Local Mind 🧠 (Worker Edition)
       </h1>
 
+      {/* Model Loading Progress Bar */}
       {!ready && (
-        <p className="text-yellow-400 mb-4">
-          Loading AI Model in Web Worker (approx 90MB)...
-        </p>
+        <div className="w-full max-w-2xl mb-8">
+          <div className="flex justify-between text-sm text-gray-400 mb-1">
+            <span>{initProgress?.status || "Initializing..."}</span>
+            <span>{Math.round(initProgress?.percent || 0)}%</span>
+          </div>
+          <div className="w-full bg-gray-700 rounded-full h-2.5 overflow-hidden">
+            <div
+              className="bg-blue-500 h-2.5 rounded-full transition-all duration-300 ease-out"
+              style={{ width: `${initProgress?.percent || 0}%` }}
+            ></div>
+          </div>
+          <p className="text-xs text-gray-500 mt-2 text-center">
+            First load may take a while (90MB). Subsequent loads will be
+            instant.
+          </p>
+        </div>
       )}
 
       <FileUploader onUpload={handleUpload} ready={ready} />
+
+      {/* Indexing Progress Toast */}
+      {indexProgress && (
+        <div className="fixed bottom-8 right-8 bg-gray-800 p-4 rounded-lg shadow-xl border border-gray-700 w-80 animate-fade-in">
+          <div className="flex justify-between items-center mb-2">
+            <span className="font-semibold text-sm">Indexing Document</span>
+            <span className="text-xs text-gray-400">
+              {Math.round(indexProgress.percent)}%
+            </span>
+          </div>
+          <p className="text-xs text-gray-400 mb-2 truncate">
+            {indexProgress.filename}
+          </p>
+          <div className="w-full bg-gray-700 rounded-full h-1.5 overflow-hidden">
+            <div
+              className="bg-green-500 h-1.5 rounded-full transition-all duration-100"
+              style={{ width: `${indexProgress.percent}%` }}
+            ></div>
+          </div>
+        </div>
+      )}
 
       <div className="w-full max-w-2xl mt-8">
         <div className="flex gap-2">
