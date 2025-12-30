@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import init, { add } from "local-mind-core";
+import init, { add } from "../pkg/local_mind_core";
 
 export default function Home() {
   const [result, setResult] = useState<number | null>(null);

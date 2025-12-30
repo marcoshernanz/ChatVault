@@ -6,10 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "dev:rust": "cargo watch -C ../core -i .gitignore -i pkg -s 'wasm-pack build --target web --out-dir ../web/pkg'",
+    "dev:next": "next dev",
+    "dev:all": "concurrently \"npm run dev:rust\" \"npm run dev:next\""
   },
   "dependencies": {
-    "local-mind-core": "file:../core/pkg/local-mind-core-0.1.0.tgz",
     "next": "16.1.1",
     "react": "19.2.3",
     "react-dom": "19.2.3"
@@ -19,6 +21,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^9.2.1",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
     "tailwindcss": "^4",
