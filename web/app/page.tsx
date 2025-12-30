@@ -1,79 +1,97 @@
 "use client";
 
 import FileUploader from "@/components/FileUploader";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+interface SearchResult {
+  doc_id: string;
+  content: string;
+  score: number;
+}
 
 export default function Home() {
-  const [db, setDb] = useState<any>(null);
+  // We use a ref to store the worker instance so it persists across renders
+  // without triggering re-renders itself.
+  const workerRef = useRef<Worker | null>(null);
+
   const [ready, setReady] = useState(false);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
+  const [docCount, setDocCount] = useState(0);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const wasm = await import("../pkg/local_mind_core");
-        await wasm.default();
+    // Initialize the Web Worker
+    // Web Workers allow us to run scripts in background threads.
+    // This keeps the main thread (UI) responsive while performing heavy computations.
+    workerRef.current = new Worker(new URL("./worker.ts", import.meta.url));
 
-        const database = new wasm.VectorDatabase();
-        setDb(database);
+    // Set up the message handler to receive messages from the worker
+    workerRef.current.onmessage = (e) => {
+      const { type, payload } = e.data;
+      console.log("Main: Received message", type);
 
-        console.log("Loading model...");
-
-        // Fetch model files
-        const [weights, tokenizer, config] = await Promise.all([
-          fetch(
-            "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/model.safetensors"
-          ).then((r) => r.arrayBuffer()),
-          fetch(
-            "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/tokenizer.json"
-          ).then((r) => r.arrayBuffer()),
-          fetch(
-            "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/config.json"
-          ).then((r) => r.arrayBuffer()),
-        ]);
-
-        database.load_model(
-          new Uint8Array(weights),
-          new Uint8Array(tokenizer),
-          new Uint8Array(config)
-        );
-
-        console.log("Model loaded!");
-        setReady(true);
-      } catch (e) {
-        console.error("Failed to init WASM or load model:", e);
+      switch (type) {
+        case "READY":
+          setReady(true);
+          break;
+        case "SEARCH_RESULTS":
+          setResults(payload);
+          setSearching(false);
+          break;
+        case "DOCUMENT_ADDED":
+          setDocCount(payload);
+          alert(`Saved! Total chunks: ${payload}`);
+          break;
+        case "ERROR":
+          console.error("Worker error:", payload);
+          setSearching(false);
+          alert("An error occurred in the worker. Check console.");
+          break;
       }
-    })();
+    };
+
+    // Send the initialization message to the worker
+    workerRef.current.postMessage({ type: "INIT" });
+
+    // Cleanup function to terminate the worker when the component unmounts
+    return () => {
+      workerRef.current?.terminate();
+    };
   }, []);
 
-  const handleSearch = async () => {
-    if (!db || !query) return;
+  const handleSearch = () => {
+    if (!workerRef.current || !query) return;
     setSearching(true);
-    try {
-      // Small delay to let UI update
-      await new Promise((r) => setTimeout(r, 10));
-      const res = db.search(query, 5, 0.5);
-      setResults(res);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSearching(false);
-    }
+    // Send the search query to the worker
+    workerRef.current.postMessage({
+      type: "SEARCH",
+      payload: { query },
+    });
+  };
+
+  const handleUpload = (file: File, content: string) => {
+    if (!workerRef.current) return;
+    // Send the document content to the worker for processing
+    workerRef.current.postMessage({
+      type: "ADD_DOCUMENT",
+      payload: { id: file.name, content },
+    });
   };
 
   return (
     <main className="flex min-h-screen flex-col items-center p-24 bg-gray-900 text-white">
-      <h1 className="text-3xl font-bold mb-8">Local Mind 🧠</h1>
+      <h1 className="text-3xl font-bold mb-8">
+        Local Mind 🧠 (Worker Edition)
+      </h1>
 
       {!ready && (
         <p className="text-yellow-400 mb-4">
-          Loading AI Model (approx 90MB)...
+          Loading AI Model in Web Worker (approx 90MB)...
         </p>
       )}
 
-      <FileUploader db={ready ? db : null} />
+      <FileUploader onUpload={handleUpload} ready={ready} />
 
       <div className="w-full max-w-2xl mt-8">
         <div className="flex gap-2">
@@ -109,10 +127,10 @@ export default function Home() {
         </div>
       </div>
 
-      {db && ready && (
+      {ready && (
         <div className="mt-8 p-4 bg-gray-800 rounded w-full max-w-2xl">
           <h2 className="text-xl mb-2">Debug View</h2>
-          <p>Documentos (Chunks) en RAM de Rust: {db.get_count()}</p>
+          <p>Documentos (Chunks) en RAM de Rust (Worker): {docCount}</p>
         </div>
       )}
     </main>

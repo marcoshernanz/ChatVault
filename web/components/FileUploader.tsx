@@ -1,16 +1,16 @@
 "use client";
 import { useState } from "react";
 
-interface RustDatabase {
-  add_document: (id: string, content: string) => void;
-  get_count: () => number;
+interface FileUploaderProps {
+  onUpload: (file: File, content: string) => void;
+  ready: boolean;
 }
 
-export default function FileUploader({ db }: { db: RustDatabase | null }) {
+export default function FileUploader({ onUpload, ready }: FileUploaderProps) {
   const [uploading, setUploading] = useState(false);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || !db) return;
+    if (!e.target.files || !ready) return;
 
     setUploading(true);
     const file = e.target.files[0];
@@ -19,18 +19,15 @@ export default function FileUploader({ db }: { db: RustDatabase | null }) {
       const text = await file.text();
       console.log(`Read ${text.length} chars.`);
 
-      // Allow UI to update before freezing for WASM
-      await new Promise((r) => setTimeout(r, 50));
+      // Call the parent handler
+      onUpload(file, text);
 
-      const startTime = performance.now();
-      db.add_document(file.name, text);
-      const endTime = performance.now();
-
-      console.log(`Rust took ${endTime - startTime}ms to process and embed.`);
-      alert(`Saved! Total chunks: ${db.get_count()}`);
+      // We don't wait for the worker here because it's async message passing.
+      // The parent component will handle the "done" state or we can just reset immediately
+      // since the heavy lifting is off-thread.
     } catch (err) {
-      console.error("Error processing file:", err);
-      alert("Error processing file. See console.");
+      console.error("Error reading file:", err);
+      alert("Error reading file. See console.");
     } finally {
       setUploading(false);
       // Reset input
@@ -44,14 +41,10 @@ export default function FileUploader({ db }: { db: RustDatabase | null }) {
         type="file"
         accept=".txt,.md"
         onChange={handleFileChange}
-        disabled={!db || uploading}
+        disabled={!ready || uploading}
         className="text-white"
       />
-      {uploading && (
-        <p className="text-yellow-400 mt-2">
-          Processing & Embedding in Rust... (this may freeze the UI)
-        </p>
-      )}
+      {uploading && <p className="text-yellow-400 mt-2">Reading file...</p>}
     </div>
   );
 }
