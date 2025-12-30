@@ -42,7 +42,7 @@ export default function FileUploader({ db }: { db: RustDatabase | null }) {
     <div className="p-4 border-2 border-dashed border-gray-600 rounded-lg w-full max-w-2xl text-center">
       <input
         type="file"
-        accept=".txt,.md,.json"
+        accept=".txt,.md"
         onChange={handleFileChange}
         disabled={!db || uploading}
         className="text-white"

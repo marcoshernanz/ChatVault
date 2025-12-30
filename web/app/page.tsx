@@ -54,7 +54,7 @@ export default function Home() {
     try {
       // Small delay to let UI update
       await new Promise((r) => setTimeout(r, 10));
-      const res = db.search(query, 5);
+      const res = db.search(query, 5, 0.5);
       setResults(res);
     } catch (e) {
       console.error(e);
