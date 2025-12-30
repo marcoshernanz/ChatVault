@@ -3,12 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "dev:rust": "cargo watch -C ../core -i .gitignore -i pkg -s 'wasm-pack build --target web --out-dir ../web/pkg'",
-    "dev:next": "next dev",
+    "dev:next": "next dev --webpack",
     "dev:all": "concurrently \"npm run dev:rust\" \"npm run dev:next\""
   },
   "dependencies": {

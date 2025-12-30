@@ -17,26 +17,29 @@ export default function FileUploader({ db }: { db: RustDatabase | null }) {
 
     try {
       const text = await file.text();
+      console.log(`Read ${text.length} chars.`);
 
-      console.log(`Leídos ${text.length} caracteres de JS.`);
+      // Allow UI to update before freezing for WASM
+      await new Promise((r) => setTimeout(r, 50));
 
       const startTime = performance.now();
-
       db.add_document(file.name, text);
-
       const endTime = performance.now();
-      console.log(`Rust tardó ${endTime - startTime}ms en procesar e indexar.`);
 
-      alert(`Guardado! Total documentos en Rust: ${db.get_count()}`);
+      console.log(`Rust took ${endTime - startTime}ms to process and embed.`);
+      alert(`Saved! Total chunks: ${db.get_count()}`);
     } catch (err) {
-      console.error("Error leyendo fichero:", err);
+      console.error("Error processing file:", err);
+      alert("Error processing file. See console.");
     } finally {
       setUploading(false);
+      // Reset input
+      e.target.value = "";
     }
   };
 
   return (
-    <div className="p-4 border-2 border-dashed border-gray-600 rounded-lg">
+    <div className="p-4 border-2 border-dashed border-gray-600 rounded-lg w-full max-w-2xl text-center">
       <input
         type="file"
         accept=".txt,.md,.json"
@@ -44,7 +47,11 @@ export default function FileUploader({ db }: { db: RustDatabase | null }) {
         disabled={!db || uploading}
         className="text-white"
       />
-      {uploading && <p className="text-yellow-400">Procesando en Rust...</p>}
+      {uploading && (
+        <p className="text-yellow-400 mt-2">
+          Processing & Embedding in Rust... (this may freeze the UI)
+        </p>
+      )}
     </div>
   );
 }
