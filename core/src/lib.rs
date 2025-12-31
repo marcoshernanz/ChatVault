@@ -110,45 +110,39 @@ impl VectorDatabase {
             .collect();
 
         let total_valid = valid_chunks.len();
-        let batch_size = 32; // Process 32 messages at once
         let mut total_embedding_time = 0.0;
 
-        for (batch_idx, batch) in valid_chunks.chunks(batch_size).enumerate() {
-            let texts: Vec<String> = batch.iter().map(|(t, _, _)| t.clone()).collect();
-
-            let start_embed = js_sys::Date::now();
-            let embeddings = self.compute_embeddings_batch(&texts)?;
-            let end_embed = js_sys::Date::now();
-            total_embedding_time += end_embed - start_embed;
-
-            for (j, embedding) in embeddings.into_iter().enumerate() {
-                let (content, sender, date) = &batch[j];
-                self.chunks.push(TextChunk {
-                    doc_id: id.clone(),
-                    content: content.clone(),
-                    sender: sender.clone(),
-                    date: date.clone(),
-                    embedding,
-                });
-            }
-
-            // Progress reporting
-            let processed = std::cmp::min((batch_idx + 1) * batch_size, total_valid);
+        for (i, (chunk_text, sender, date)) in valid_chunks.into_iter().enumerate() {
             if let Some(callback) = &on_progress {
                 let _ = callback.call2(
                     &JsValue::NULL,
-                    &JsValue::from(processed as u32),
+                    &JsValue::from(i as u32),
                     &JsValue::from(total_valid as u32),
                 );
             }
 
+            // Log progress occasionally
+            let preview: String = chunk_text.chars().take(50).collect();
             web_sys::console::log_1(&JsValue::from_str(&format!(
-                "Processed batch {}/{} ({} items). Time: {}ms",
-                batch_idx + 1,
-                (total_valid + batch_size - 1) / batch_size,
-                batch.len(),
-                end_embed - start_embed
+                "Indexing chunk {}/{}: {}...",
+                i + 1,
+                total_valid,
+                preview
             )));
+
+            let start_embed = js_sys::Date::now();
+            let embedding = self.compute_embedding(&chunk_text)?;
+            let end_embed = js_sys::Date::now();
+            total_embedding_time += end_embed - start_embed;
+
+            let chunk = TextChunk {
+                doc_id: id.clone(),
+                content: chunk_text,
+                sender,
+                date,
+                embedding,
+            };
+            self.chunks.push(chunk);
         }
 
         let end_total = js_sys::Date::now();
@@ -164,66 +158,6 @@ impl VectorDatabase {
         )));
 
         Ok(())
-    }
-
-    fn compute_embeddings_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, JsError> {
-        let mut tokenizer = self.tokenizer.as_ref().unwrap().clone();
-        let model = self.model.as_ref().unwrap();
-        let device = Device::Cpu;
-
-        // Configure padding
-        if let Some(pp) = tokenizer.get_padding_mut() {
-            pp.strategy = tokenizers::PaddingStrategy::BatchLongest;
-        } else {
-            let pp = tokenizers::PaddingParams {
-                strategy: tokenizers::PaddingStrategy::BatchLongest,
-                ..Default::default()
-            };
-            tokenizer.with_padding(Some(pp));
-        }
-
-        // Configure truncation
-        if let Some(tp) = tokenizer.get_truncation_mut() {
-            tp.max_length = 512;
-        } else {
-            let tp = tokenizers::TruncationParams {
-                max_length: 512,
-                ..Default::default()
-            };
-            let _ = tokenizer.with_truncation(Some(tp));
-        }
-
-        let tokens = tokenizer
-            .encode_batch(texts.to_vec(), true)
-            .map_err(|e| JsError::new(&e.to_string()))?;
-
-        if tokens.is_empty() {
-            return Ok(vec![]);
-        }
-
-        let token_ids_vec: Vec<u32> = tokens.iter().flat_map(|t| t.get_ids().to_vec()).collect();
-        let seq_len = tokens[0].get_ids().len();
-        let batch_size = tokens.len();
-
-        let token_ids = Tensor::from_vec(token_ids_vec, (batch_size, seq_len), &device)?;
-        let token_type_ids = token_ids.zeros_like()?;
-
-        // Create attention mask (1 for non-padding, 0 for padding)
-        let pad_id = tokenizer.get_padding().map(|p| p.pad_id).unwrap_or(0);
-        let attention_mask = token_ids.ne(pad_id)?;
-
-        let embeddings = model.forward(&token_ids, &token_type_ids, Some(&attention_mask))?;
-
-        // Mean pooling with attention mask
-        let mask_f32 = attention_mask.to_dtype(DType::F32)?;
-        let sum_embeddings = embeddings.broadcast_mul(&mask_f32.unsqueeze(2)?)?.sum(1)?;
-        let sum_mask = mask_f32.sum(1)?.unsqueeze(1)?;
-
-        // Avoid division by zero
-        let pooled = sum_embeddings.broadcast_div(&sum_mask)?;
-        let pooled = normalize(&pooled)?;
-
-        Ok(pooled.to_vec2::<f32>()?)
     }
 
     fn parse_whatsapp(&self, text: &str) -> Vec<(String, Option<String>, Option<String>)> {
