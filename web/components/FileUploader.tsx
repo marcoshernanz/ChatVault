@@ -24,30 +24,6 @@ export default function FileUploader({ onUpload, ready }: FileUploaderProps) {
     });
   };
 
-  // Recursive function to traverse directories
-  // We use 'any' here because FileSystemEntry types are not standard in all TS configs
-  const traverseFileTree = async (item: any, path = ""): Promise<File[]> => {
-    if (item.isFile) {
-      return new Promise((resolve) => {
-        item.file((file: File) => {
-          resolve([file]);
-        });
-      });
-    } else if (item.isDirectory) {
-      const dirReader = item.createReader();
-      return new Promise((resolve) => {
-        dirReader.readEntries(async (entries: any[]) => {
-          const entriesPromises = entries.map((entry) =>
-            traverseFileTree(entry, path + item.name + "/")
-          );
-          const files = await Promise.all(entriesPromises);
-          resolve(files.flat());
-        });
-      });
-    }
-    return [];
-  };
-
   const processFiles = async (files: File[]) => {
     setProcessing(true);
     let count = 0;
@@ -72,20 +48,20 @@ export default function FileUploader({ onUpload, ready }: FileUploaderProps) {
     if (!ready) return;
 
     const items = e.dataTransfer.items;
-    const promises: Promise<File[]>[] = [];
+    const files: File[] = [];
 
-    // Use DataTransferItemList interface to access file system entries
+    // Only process files, ignore directories
     for (let i = 0; i < items.length; i++) {
       const item = items[i].webkitGetAsEntry();
-      if (item) {
-        promises.push(traverseFileTree(item));
+      if (item && item.isFile) {
+        const file = items[i].getAsFile();
+        if (file) {
+          files.push(file);
+        }
       }
     }
 
-    const results = await Promise.all(promises);
-    const flatFiles = results.flat();
-
-    await processFiles(flatFiles);
+    await processFiles(files);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -126,9 +102,9 @@ export default function FileUploader({ onUpload, ready }: FileUploaderProps) {
           <p className="text-lg font-medium mb-1">
             {processing
               ? "Processing files..."
-              : "Drag & Drop files or folders"}
+              : "Drag & Drop WhatsApp exports (.txt)"}
           </p>
-          <p className="text-sm text-gray-400">Supports .txt and .md files</p>
+          <p className="text-sm text-gray-400">Supports .txt files</p>
         </div>
 
         <label className="relative cursor-pointer">

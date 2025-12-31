@@ -22,7 +22,4 @@ serde-wasm-bindgen = "0.6"
 js-sys = "0.3"
 web-sys = { version = "0.3", features = ["console"] }
 anyhow = "1.0"
-text-splitter = { version = "0.28.0", default-features = false, features = [
-  "markdown",
-] }
 regex = "1.12.2"

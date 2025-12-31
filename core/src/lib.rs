@@ -4,22 +4,8 @@ use candle_transformers::models::bert::{BertModel, Config};
 use js_sys::Function;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use text_splitter::{ChunkConfig, ChunkSizer, TextSplitter};
 use tokenizers::Tokenizer;
 use wasm_bindgen::prelude::*;
-
-struct BertSizer<'a> {
-    tokenizer: &'a Tokenizer,
-}
-
-impl<'a> ChunkSizer for BertSizer<'a> {
-    fn size(&self, chunk: &str) -> usize {
-        self.tokenizer
-            .encode(chunk, false)
-            .map(|e| e.len())
-            .unwrap_or(0)
-    }
-}
 
 struct TextChunk {
     doc_id: String,
@@ -88,8 +74,6 @@ impl VectorDatabase {
             return Err(JsError::new("Model not loaded"));
         }
 
-        let tokenizer = self.tokenizer.as_ref().unwrap();
-
         // Check if it's a WhatsApp chat
         // Heuristic: Check first 500 chars for date pattern
         let is_whatsapp = if content.len() > 500 {
@@ -103,18 +87,13 @@ impl VectorDatabase {
             false
         };
 
-        let chunks_data: Vec<(String, Option<String>, Option<String>)> = if is_whatsapp {
-            self.parse_whatsapp(&content)
-        } else {
-            // Use TextSplitter with the Hugging Face Tokenizer
-            let max_tokens = 100; // Target ~100 tokens per chunk for dense retrieval
-            let sizer = BertSizer { tokenizer };
+        if !is_whatsapp {
+            return Err(JsError::new(
+                "Document does not appear to be a valid WhatsApp export.",
+            ));
+        }
 
-            let splitter = TextSplitter::new(ChunkConfig::new(max_tokens).with_sizer(sizer));
-            let chunks: Vec<String> = splitter.chunks(&content).map(|s| s.to_string()).collect();
-
-            chunks.into_iter().map(|c| (c, None, None)).collect()
-        };
+        let chunks_data = self.parse_whatsapp(&content);
 
         let total_chunks = chunks_data.len();
 
