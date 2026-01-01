@@ -81,6 +81,27 @@ async function initialize() {
     // Track progress for multiple files
     const progressMap: Record<string, { loaded: number; total: number }> = {};
 
+    // Initialize with estimates to prevent progress bar jumping
+    const ESTIMATED_SIZES: Record<string, number> = {
+      "model.safetensors": 90 * 1024 * 1024, // ~90MB
+      "tokenizer.json": 500 * 1024, // ~500KB
+      "config.json": 2 * 1024, // ~2KB
+    };
+
+    const modelUrls = [
+      "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/model.safetensors",
+      "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/tokenizer.json",
+      "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/config.json",
+    ];
+
+    modelUrls.forEach((url) => {
+      const filename = url.split("/").pop() || "";
+      progressMap[url] = {
+        loaded: 0,
+        total: ESTIMATED_SIZES[filename] || 0,
+      };
+    });
+
     const reportTotalProgress = () => {
       let totalLoaded = 0;
       let totalSize = 0;
@@ -91,7 +112,10 @@ async function initialize() {
       });
 
       // Avoid division by zero
-      const percent = totalSize > 0 ? (totalLoaded / totalSize) * 100 : 0;
+      let percent = totalSize > 0 ? (totalLoaded / totalSize) * 100 : 0;
+
+      // Clamp to 100% to avoid 101% issues
+      if (percent > 100) percent = 100;
 
       self.postMessage({
         type: "INIT_PROGRESS",
@@ -106,17 +130,9 @@ async function initialize() {
       });
     };
 
-    const [weights, tokenizer, config] = await Promise.all([
-      loadFile(
-        "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/model.safetensors"
-      ),
-      loadFile(
-        "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/tokenizer.json"
-      ),
-      loadFile(
-        "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/config.json"
-      ),
-    ]);
+    const [weights, tokenizer, config] = await Promise.all(
+      modelUrls.map(loadFile)
+    );
 
     self.postMessage({
       type: "INIT_PROGRESS",
