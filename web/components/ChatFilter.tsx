@@ -49,7 +49,7 @@ export default function ChatFilter({
               className="hidden"
             />
             <span className="w-1.5 h-1.5 rounded-full bg-current opacity-50" />
-            <span className="truncate max-w-[150px]">{doc}</span>
+            <span className="truncate max-w-37.5">{doc}</span>
           </label>
         ))}
       </div>

@@ -75,7 +75,7 @@ export default function Home() {
       </a>
       <div className="w-full max-w-3xl flex flex-col gap-8">
         <div className="text-center space-y-2 mb-8">
-          <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-b from-white to-zinc-400 bg-clip-text text-transparent">
+          <h1 className="text-4xl font-bold tracking-tight bg-linear-to-b from-white to-zinc-400 bg-clip-text text-transparent">
             Local Mind
           </h1>
           <p className="text-zinc-500 text-sm">
@@ -99,7 +99,7 @@ export default function Home() {
             />
 
             <div className="relative group">
-              <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/20 to-purple-500/20 rounded-xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+              <div className="absolute inset-0 bg-linear-to-r from-indigo-500/20 to-purple-500/20 rounded-xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
               <div className="relative flex gap-3 bg-zinc-900/50 p-2 rounded-xl border border-zinc-800/50 shadow-lg backdrop-blur-sm focus-within:border-zinc-700 transition-colors">
                 <input
                   type="text"

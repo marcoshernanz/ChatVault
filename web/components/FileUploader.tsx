@@ -25,12 +25,10 @@ export default function FileUploader({ onUpload, ready }: FileUploaderProps) {
 
   const processFiles = async (files: File[]) => {
     setProcessing(true);
-    let count = 0;
     for (const file of files) {
       if (file.name.endsWith(".txt") || file.name.endsWith(".md")) {
         try {
           await readFileContent(file);
-          count++;
         } catch (e) {
           console.error("Error reading file", file.name, e);
         }

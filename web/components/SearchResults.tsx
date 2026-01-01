@@ -41,7 +41,7 @@ export default function SearchResults({ results }: SearchResultsProps) {
               <span className="text-[10px] text-zinc-600 uppercase tracking-wider">
                 Source
               </span>
-              <span className="text-xs text-zinc-500 font-medium truncate max-w-[200px]">
+              <span className="text-xs text-zinc-500 font-medium truncate max-w-50">
                 {r.doc_id}
               </span>
             </div>
