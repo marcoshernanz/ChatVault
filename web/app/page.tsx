@@ -63,7 +63,7 @@ export default function Home() {
   return (
     <main className="relative flex min-h-screen flex-col items-center py-24 px-6 bg-zinc-950 text-zinc-100 selection:bg-indigo-500/30">
       <a
-        href="https://github.com/marcoshernanz/local-mind"
+        href="https://github.com/marcoshernanz/chatvault"
         target="_blank"
         rel="noopener noreferrer"
         className="absolute top-6 right-6 p-2 text-zinc-500 hover:text-zinc-100 transition-colors"
@@ -76,7 +76,7 @@ export default function Home() {
       <div className="w-full max-w-3xl flex flex-col gap-8">
         <div className="text-center space-y-2 mb-8">
           <h1 className="text-4xl font-bold tracking-tight bg-linear-to-b from-white to-zinc-400 bg-clip-text text-transparent">
-            Local Mind
+            ChatVault
           </h1>
           <p className="text-zinc-500 text-sm">
             Your private second brain, running entirely in your browser.

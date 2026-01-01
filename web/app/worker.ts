@@ -1,4 +1,4 @@
-import init, { VectorDatabase } from "../pkg/local_mind_core";
+import init, { VectorDatabase } from "../pkg/chatvault";
 import { get, set } from "idb-keyval";
 
 type WorkerMessage =
@@ -129,7 +129,7 @@ async function initialize() {
     );
 
     try {
-      const savedDb = await get("local_mind_db_dump");
+      const savedDb = await get("chatvault_db_dump");
       if (savedDb) {
         db.import_database(savedDb);
         const ids = db.get_document_ids();
@@ -188,7 +188,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
 
         try {
           const dump = db.export_database();
-          await set("local_mind_db_dump", dump);
+          await set("chatvault_db_dump", dump);
         } catch (e) {
           console.error("Failed to save DB", e);
         }
