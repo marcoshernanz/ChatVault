@@ -5,10 +5,12 @@ import { get, set } from "idb-keyval";
 type WorkerMessage =
   | { type: "INIT" }
   | { type: "ADD_DOCUMENT"; payload: { id: string; content: string } }
-  | { type: "SEARCH"; payload: { query: string } };
+  | { type: "SEARCH"; payload: { query: string } }
+  | { type: "CANCEL_DOCUMENT"; payload: { id: string } };
 
 // Global state for the worker
 let db: VectorDatabase | null = null;
+const cancelledDocs = new Set<string>();
 
 /**
  * Fetches a file with progress reporting.
@@ -23,7 +25,7 @@ async function fetchWithProgress(
   try {
     const cachedFile = await get(filename);
     if (cachedFile) {
-      console.log(`Worker: Loaded ${filename} from cache.`);
+      // console.log(`Worker: Loaded ${filename} from cache.`);
       // Report 100% progress immediately
       onProgress(cachedFile.byteLength, cachedFile.byteLength);
       return cachedFile;
@@ -32,7 +34,7 @@ async function fetchWithProgress(
     console.warn(`Worker: Cache lookup failed for ${filename}`, err);
   }
 
-  console.log(`Worker: Fetching ${filename} from network...`);
+  // console.log(`Worker: Fetching ${filename} from network...`);
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Failed to fetch ${url}`);
 
@@ -74,7 +76,7 @@ async function initialize() {
   try {
     await init();
     db = new VectorDatabase();
-    console.log("Worker: WASM initialized, loading model...");
+    // console.log("Worker: WASM initialized, loading model...");
 
     // Track progress for multiple files
     const progressMap: Record<string, { loaded: number; total: number }> = {};
@@ -127,7 +129,18 @@ async function initialize() {
       new Uint8Array(config)
     );
 
-    console.log("Worker: Model loaded!");
+    try {
+      const savedDb = await get("local_mind_db_dump");
+      if (savedDb) {
+        db.import_database(savedDb);
+        const ids = db.get_document_ids();
+        self.postMessage({ type: "RESTORED_DOCS", payload: ids });
+      }
+    } catch (e) {
+      console.error("Failed to load saved DB", e);
+    }
+
+    // console.log("Worker: Model loaded!");
     self.postMessage({ type: "READY" });
   } catch (e) {
     console.error("Worker: Failed to initialize", e);
@@ -147,30 +160,57 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
     case "ADD_DOCUMENT":
       if (!db) return;
       const { id, content } = msg.payload;
+
+      if (cancelledDocs.has(id)) {
+        cancelledDocs.delete(id);
+        return;
+      }
+
       try {
-        console.log(`Worker: Adding document ${id}...`);
+        // console.log(`Worker: Adding document ${id}...`);
 
         // Pass a callback to Rust for progress updates
         // The callback receives (current_chunk_index, total_chunks)
         const onProgress = (current: number, total: number) => {
+          // Note: We can't easily check cancelledDocs here because this callback
+          // is invoked synchronously from Rust, and the worker event loop
+          // hasn't processed any new messages (like CANCEL_DOCUMENT).
+          // However, if we had SharedArrayBuffer, we could check it here.
           self.postMessage({
             type: "INDEX_PROGRESS",
             payload: {
               filename: id,
-              current,
+              current: current + 1,
               total,
-              percent: (current / total) * 100,
+              percent: ((current + 1) / total) * 100,
             },
           });
         };
 
         db.add_document(id, content, onProgress);
 
+        // Check cancellation again after processing
+        if (cancelledDocs.has(id)) {
+          cancelledDocs.delete(id);
+          return;
+        }
+
+        try {
+          const dump = db.export_database();
+          await set("local_mind_db_dump", dump);
+        } catch (e) {
+          console.error("Failed to save DB", e);
+        }
+
         const count = db.get_count();
-        self.postMessage({ type: "DOCUMENT_ADDED", payload: count });
+        self.postMessage({ type: "DOCUMENT_ADDED", payload: { count, id } });
       } catch (err) {
         self.postMessage({ type: "ERROR", payload: String(err) });
       }
+      break;
+
+    case "CANCEL_DOCUMENT":
+      cancelledDocs.add(msg.payload.id);
       break;
 
     case "SEARCH":

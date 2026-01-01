@@ -38,7 +38,7 @@ export default function FileUploader({ onUpload, ready }: FileUploaderProps) {
         }
       }
     }
-    console.log(`Processed ${count} files`);
+    // console.log(`Processed ${count} files`);
     setProcessing(false);
   };
 
