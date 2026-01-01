@@ -10,7 +10,6 @@ export default function FileUploader({ onUpload, ready }: FileUploaderProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [processing, setProcessing] = useState(false);
 
-  // Helper to read file content
   const readFileContent = (file: File): Promise<void> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -28,7 +27,6 @@ export default function FileUploader({ onUpload, ready }: FileUploaderProps) {
     setProcessing(true);
     let count = 0;
     for (const file of files) {
-      // Filter for text/md files
       if (file.name.endsWith(".txt") || file.name.endsWith(".md")) {
         try {
           await readFileContent(file);
@@ -38,7 +36,6 @@ export default function FileUploader({ onUpload, ready }: FileUploaderProps) {
         }
       }
     }
-    // console.log(`Processed ${count} files`);
     setProcessing(false);
   };
 
@@ -50,7 +47,6 @@ export default function FileUploader({ onUpload, ready }: FileUploaderProps) {
     const items = e.dataTransfer.items;
     const files: File[] = [];
 
-    // Only process files, ignore directories
     for (let i = 0; i < items.length; i++) {
       const item = items[i].webkitGetAsEntry();
       if (item && item.isFile) {
@@ -76,7 +72,7 @@ export default function FileUploader({ onUpload, ready }: FileUploaderProps) {
   const handleInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && ready) {
       await processFiles(Array.from(e.target.files));
-      e.target.value = ""; // Reset input
+      e.target.value = "";
     }
   };
 

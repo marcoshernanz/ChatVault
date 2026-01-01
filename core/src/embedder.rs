@@ -38,15 +38,11 @@ impl Embedder {
             .encode(text, true)
             .map_err(|e| JsError::new(&e.to_string()))?;
 
-        // Truncate to 512 tokens to avoid model error
         if tokens.get_ids().len() > 512 {
-            // web_sys::console::warn_1(&JsValue::from_str("Truncating text to 512 tokens"));
             tokens = self
                 .tokenizer
                 .encode(&text[..std::cmp::min(text.len(), 2000)], true)
                 .map_err(|e| JsError::new(&e.to_string()))?;
-            // Note: This is a naive truncation (by char), ideally we truncate tokens.
-            // But for now let's just warn and rely on the fact that we split by paragraphs.
         }
 
         let token_ids = Tensor::new(tokens.get_ids(), &device)?.unsqueeze(0)?;

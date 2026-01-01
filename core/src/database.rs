@@ -69,7 +69,6 @@ impl VectorDatabase {
 
         let chunks_data = parse_whatsapp(&content);
 
-        // Filter empty chunks first
         let valid_chunks: Vec<_> = chunks_data
             .into_iter()
             .filter(|(t, _, _)| !t.trim().is_empty())
@@ -118,8 +117,6 @@ impl VectorDatabase {
 
         let query_embedding = self.embedder.as_ref().unwrap().compute_embedding(&query)?;
 
-        // Hybrid Search: Prepare query tokens for keyword matching
-        // We split by whitespace and remove non-alphanumeric characters
         let query_tokens: Vec<String> = query
             .to_lowercase()
             .split_whitespace()
@@ -143,12 +140,8 @@ impl VectorDatabase {
                 }
             })
             .map(|(i, chunk)| {
-                // 1. Vector Score (Semantic Meaning)
-                // Dot product of normalized vectors = Cosine Similarity
                 let vector_score = dot_product(&query_embedding, &chunk.embedding);
 
-                // 2. Keyword Score (Exact Match)
-                // Simple "Bag of Words" overlap
                 let chunk_lower = chunk.content.to_lowercase();
                 let mut matches = 0;
                 for token in &query_tokens {
@@ -163,29 +156,21 @@ impl VectorDatabase {
                     matches as f32 / query_tokens.len() as f32
                 };
 
-                // 3. Hybrid Score (Weighted Combination)
-                // Balanced 50/50 to ensure keyword matches are strong, but semantic search still works.
                 let mut hybrid_score = (vector_score * 0.5) + (keyword_score * 0.5);
 
-                // Penalize short messages to avoid noise
-                // We apply a stronger penalty if there is no keyword match
                 let len = chunk.content.len();
                 if len < 30 {
                     if keyword_score < 0.01 {
-                        // Short and no keyword match -> heavy penalty (0.4x)
                         hybrid_score *= 0.4;
                     } else {
-                        // Short but has keyword match -> slight penalty (0.8x)
                         hybrid_score *= 0.8;
                     }
                 } else if len < 100 {
-                    // Medium length, no keyword match -> slight penalty
                     if keyword_score < 0.01 {
                         hybrid_score *= 0.9;
                     }
                 }
 
-                // Penalize standalone links (heuristic: starts with http, contains no spaces)
                 if chunk.content.trim().starts_with("http") && !chunk.content.trim().contains(' ') {
                     hybrid_score *= 0.5;
                 }
