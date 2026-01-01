@@ -164,9 +164,31 @@ impl VectorDatabase {
                 };
 
                 // 3. Hybrid Score (Weighted Combination)
-                // We give 70% weight to meaning (Vector) and 30% to exact matches (Keyword).
-                // This ensures that if a user types a specific name or ID, it gets boosted.
-                let hybrid_score = (vector_score * 0.7) + (keyword_score * 0.3);
+                // Balanced 50/50 to ensure keyword matches are strong, but semantic search still works.
+                let mut hybrid_score = (vector_score * 0.5) + (keyword_score * 0.5);
+
+                // Penalize short messages to avoid noise
+                // We apply a stronger penalty if there is no keyword match
+                let len = chunk.content.len();
+                if len < 30 {
+                    if keyword_score < 0.01 {
+                        // Short and no keyword match -> heavy penalty (0.4x)
+                        hybrid_score *= 0.4;
+                    } else {
+                        // Short but has keyword match -> slight penalty (0.8x)
+                        hybrid_score *= 0.8;
+                    }
+                } else if len < 100 {
+                    // Medium length, no keyword match -> slight penalty
+                    if keyword_score < 0.01 {
+                        hybrid_score *= 0.9;
+                    }
+                }
+
+                // Penalize standalone links (heuristic: starts with http, contains no spaces)
+                if chunk.content.trim().starts_with("http") && !chunk.content.trim().contains(' ') {
+                    hybrid_score *= 0.5;
+                }
 
                 (i, hybrid_score)
             })
