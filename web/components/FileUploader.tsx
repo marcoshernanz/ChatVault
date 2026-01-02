@@ -120,7 +120,7 @@ export default function FileUploader({ onUpload, ready }: FileUploaderProps) {
           <input
             type="file"
             multiple
-            accept=".txt,.md"
+            accept=".txt"
             onChange={handleInputChange}
             disabled={!ready || processing}
             className="hidden"
