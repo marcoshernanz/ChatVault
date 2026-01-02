@@ -34,3 +34,7 @@
 .animate-fade-in {
   animation: fade-in 0.3s ease-out forwards;
 }
+
+body {
+  @apply bg-zinc-950;
+}
