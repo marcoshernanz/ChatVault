@@ -76,7 +76,7 @@ impl VectorDatabase {
 
         let total_valid = valid_chunks.len();
 
-        for (i, (chunk_text, sender, date)) in valid_chunks.into_iter().enumerate() {
+        for (i, (chunk_text, sender, date)) in valid_chunks.iter().enumerate() {
             if let Some(callback) = &on_progress {
                 let _ = callback.call2(
                     &JsValue::NULL,
@@ -85,17 +85,23 @@ impl VectorDatabase {
                 );
             }
 
+            let text_to_embed = if i > 0 {
+                format!("{} {}", valid_chunks[i - 1].0, chunk_text)
+            } else {
+                chunk_text.clone()
+            };
+
             let embedding = self
                 .embedder
                 .as_ref()
                 .unwrap()
-                .compute_embedding(&chunk_text)?;
+                .compute_embedding(&text_to_embed)?;
 
             let chunk = TextChunk {
                 doc_id: id.clone(),
-                content: chunk_text,
-                sender,
-                date,
+                content: chunk_text.clone(),
+                sender: sender.clone(),
+                date: date.clone(),
                 embedding,
             };
             self.chunks.push(chunk);
@@ -117,6 +123,20 @@ impl VectorDatabase {
 
         let query_embedding = self.embedder.as_ref().unwrap().compute_embedding(&query)?;
 
+        let stop_words: std::collections::HashSet<&str> = [
+            "a", "an", "the", "and", "or", "but", "if", "then", "else", "when", "at", "from", "by",
+            "for", "with", "about", "against", "between", "into", "through", "during", "before",
+            "after", "above", "below", "to", "from", "up", "down", "in", "out", "on", "off",
+            "over", "under", "again", "further", "then", "once", "here", "there", "when", "where",
+            "why", "how", "all", "any", "both", "each", "few", "more", "most", "other", "some",
+            "such", "no", "nor", "not", "only", "own", "same", "so", "than", "too", "very", "s",
+            "t", "can", "will", "just", "don", "should", "now", "are", "is", "was", "were", "have",
+            "has", "had",
+        ]
+        .iter()
+        .cloned()
+        .collect();
+
         let query_tokens: Vec<String> = query
             .to_lowercase()
             .split_whitespace()
@@ -125,7 +145,7 @@ impl VectorDatabase {
                     .filter(|c| c.is_alphanumeric())
                     .collect::<String>()
             })
-            .filter(|s| !s.is_empty())
+            .filter(|s| !s.is_empty() && !stop_words.contains(s.as_str()))
             .collect();
 
         let mut scores: Vec<(usize, f32)> = self
@@ -142,10 +162,16 @@ impl VectorDatabase {
             .map(|(i, chunk)| {
                 let vector_score = dot_product(&query_embedding, &chunk.embedding);
 
-                let chunk_lower = chunk.content.to_lowercase();
+                let chunk_tokens: std::collections::HashSet<String> = chunk
+                    .content
+                    .to_lowercase()
+                    .split_whitespace()
+                    .map(|s| s.chars().filter(|c| c.is_alphanumeric()).collect())
+                    .collect();
+
                 let mut matches = 0;
                 for token in &query_tokens {
-                    if chunk_lower.contains(token) {
+                    if chunk_tokens.contains(token) {
                         matches += 1;
                     }
                 }
@@ -159,16 +185,8 @@ impl VectorDatabase {
                 let mut hybrid_score = (vector_score * 0.5) + (keyword_score * 0.5);
 
                 let len = chunk.content.len();
-                if len < 30 {
-                    if keyword_score < 0.01 {
-                        hybrid_score *= 0.4;
-                    } else {
-                        hybrid_score *= 0.8;
-                    }
-                } else if len < 100 {
-                    if keyword_score < 0.01 {
-                        hybrid_score *= 0.9;
-                    }
+                if len < 20 && keyword_score < 0.01 {
+                    hybrid_score *= 0.95;
                 }
 
                 if chunk.content.trim().starts_with("http") && !chunk.content.trim().contains(' ') {

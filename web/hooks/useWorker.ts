@@ -117,7 +117,6 @@ export function useWorker() {
           setTimeout(() => {
             setUploads((prev) => {
               if (prev[payload.id]?.status === "completed") {
-                // Optional: remove from list or keep as completed
               }
               return prev;
             });
