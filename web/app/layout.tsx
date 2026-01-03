@@ -33,7 +33,7 @@ export const metadata: Metadata = {
     description:
       "Search your chat history with meaning, not just keywords. Powered by Rust & Wasm.",
     type: "website",
-    // images: ["/og-image.png"], // (Opcional: Si haces una captura luego)
+    images: ["/demo/demo_image.png"],
   },
   twitter: {
     card: "summary_large_image",
